@@ -1,0 +1,16 @@
+[Unit]
+Description=Stock Alert Web UI and Price Monitor Daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/data/projects/stock-alert-app
+# Loads your KIS and Telegram credentials from the env file
+EnvironmentFile=/data/secrets/asset-sync.env
+# Starts uvicorn portably using python3 module invocation
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

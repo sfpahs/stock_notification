@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>주가 감시 & 알림 서비스</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'Noto Sans KR', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Custom CSS for glassmorphism and animations -->
+    <style>
+        .glass-dark {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glass-light {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+        }
+        .glow-blue {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+        }
+        body {
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.3);
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col font-sans transition-colors duration-300">
+
+    <!-- Header Navigation -->
+    <header class="w-full py-4 px-6 flex justify-between items-center border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6 text-white">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-brand-500 to-indigo-400 bg-clip-text text-transparent">StockAlert</h1>
+                <p class="text-xs text-slate-500 dark:text-slate-400">주가 실시간 알림 서비스 프로토타입</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <!-- Theme Toggle Button -->
+            <button id="themeToggle" class="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors shadow-sm" aria-label="화면 테마 변경">
+                <!-- Sun Icon -->
+                <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-amber-500 hidden">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                </svg>
+                <!-- Moon Icon -->
+                <svg id="moonIcon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-slate-400 dark:text-indigo-400 block">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: Add / Edit Alerts Form (Lg: 4/12) -->
+        <div class="lg:col-span-4 flex flex-col gap-6">
+            
+            <!-- Stock Search / Autocomplete Card -->
+            <div id="searchCard" class="rounded-2xl p-5 glow-blue glass-dark transition-all duration-300">
+                <h2 class="text-lg font-semibold mb-4 text-slate-800 dark:text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-brand-500">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.637 10.636z" />
+                    </svg>
+                    종목 검색 및 등록
+                </h2>
+                
+                <!-- Search Box -->
+                <div class="relative">
+                    <input type="text" id="searchInput" placeholder="주식명 또는 티커 검색 (예: 삼성전자, AAPL)" 
+                           class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 placeholder-slate-400 text-sm transition-all">
+                    
+                    <!-- Search Results Suggestion Box -->
+                    <div id="searchResults" class="absolute left-0 right-0 mt-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-60 overflow-y-auto hidden custom-scrollbar z-50">
+                        <!-- Suggestion Items dynamically inserted here -->
+                    </div>
+                </div>
+                
+                <!-- Form Inputs -->
+                <form id="alertForm" class="mt-5 space-y-4">
+                    <input type="hidden" id="formAlertId" value="">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">종목명</label>
+                        <input type="text" id="formName" required readonly placeholder="검색 결과에서 종목을 선택하세요"
+                               class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-300 text-sm focus:outline-none cursor-not-allowed">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">티커 코드</label>
+                        <input type="text" id="formTicker" required readonly placeholder="코드 자동입력"
+                               class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-300 text-sm focus:outline-none cursor-not-allowed">
+                        <input type="hidden" id="formExchange">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">조건</label>
+                            <select id="formCondition" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                                <option value=">=">&gt;= (이상)</option>
+                                <option value="<=">&lt;= (이하)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">목표 가격</label>
+                            <input type="number" step="any" id="formTargetPrice" required placeholder="예: 75000"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                        </div>
+                    </div>
+
+                    <div class="flex gap-3 pt-2">
+                        <button type="submit" id="submitBtn" class="flex-grow py-3 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-medium text-sm transition-colors shadow-lg shadow-brand-500/10">
+                            알림 추가하기
+                        </button>
+                        <button type="button" id="cancelEditBtn" class="hidden py-3 px-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-300 font-medium text-sm transition-colors">
+                            취소
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Center/Right Column: Settings and Watchlist (Lg: 8/12) -->
+        <div class="lg:col-span-8 flex flex-col gap-6">
+            
+            <!-- Top Row: Config Form (Telegram & Alert Period) -->
+            <div id="settingsCard" class="rounded-2xl p-5 glow-blue glass-dark transition-all duration-300">
+                <h2 class="text-lg font-semibold mb-4 text-slate-800 dark:text-white flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-indigo-500">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    알림 및 모니터링 환경 설정
+                </h2>
+                
+                <form id="settingsForm" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Telegram Bot Token</label>
+                        <input type="password" id="settToken" placeholder="봇 토큰 입력"
+                               class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Telegram Chat ID</label>
+                        <input type="text" id="settChatId" placeholder="수신 Chat ID 입력"
+                               class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">감시 주기 (초 단위)</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="settInterval" min="5" placeholder="예: 60"
+                                   class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                            <button type="submit" class="px-4 rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-medium text-sm transition-colors">
+                                저장
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                
+                <!-- Helper Test Buttons -->
+                <div class="flex flex-wrap gap-3 mt-4 pt-3 border-t border-slate-200 dark:border-slate-800/60 justify-end">
+                    <button type="button" id="testTelegramBtn" class="py-2 px-4 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-xs transition-colors flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-brand-500">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                        </svg>
+                        텔레그램 알림 테스트
+                    </button>
+                    <button type="button" id="manualCheckBtn" class="py-2 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-500/15">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                        지금 즉시 가격 판정 검사 실행
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Alerts Watchlist Table -->
+            <div id="watchlistCard" class="rounded-2xl p-5 glow-blue glass-dark transition-all duration-300 flex-grow flex flex-col">
+                <!-- Search & Header Row -->
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                    <div class="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-emerald-500">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12M8.25 17.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                        </svg>
+                        <h2 class="text-lg font-semibold text-slate-800 dark:text-white">감시 종목 리스트</h2>
+                        <span id="watchlistCount" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">총 0개 종목</span>
+                    </div>
+                    <div class="flex items-center gap-2 w-full md:w-auto">
+                        <input type="text" id="watchlistSearchInput" placeholder="리스트 내 종목명/티커 검색..." 
+                               class="w-full md:w-60 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-xs transition-all placeholder-slate-400">
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto custom-scrollbar flex-grow">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 dark:border-slate-800/80 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                <th class="py-3 px-4 cursor-pointer select-none hover:text-slate-800 dark:hover:text-white transition-colors" onclick="handleSort('name')">
+                                    종목 정보 <span id="sort-name-icon" class="ml-1 text-slate-400 dark:text-slate-500 text-[10px]">↕</span>
+                                </th>
+                                <th class="py-3 px-4 cursor-pointer select-none hover:text-slate-800 dark:hover:text-white transition-colors" onclick="handleSort('price')">
+                                    현재가 <span id="sort-price-icon" class="ml-1 text-slate-400 dark:text-slate-500 text-[10px]">↕</span>
+                                </th>
+                                <th class="py-3 px-4 text-center cursor-pointer select-none hover:text-slate-800 dark:hover:text-white transition-colors" onclick="handleSort('target_price')">
+                                    알림 조건 <span id="sort-target_price-icon" class="ml-1 text-slate-400 dark:text-slate-500 text-[10px]">↕</span>
+                                </th>
+                                <th class="py-3 px-4 text-center">오늘 알림 여부</th>
+                                <th class="py-3 px-4 text-center cursor-pointer select-none hover:text-slate-800 dark:hover:text-white transition-colors" onclick="handleSort('enabled')">
+                                    감시 상태 <span id="sort-enabled-icon" class="ml-1 text-slate-400 dark:text-slate-500 text-[10px]">↕</span>
+                                </th>
+                                <th class="py-3 px-4 text-right">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody id="watchlistTableBody" class="divide-y divide-slate-100 dark:divide-slate-800/40 text-sm">
+                            <!-- Rows dynamically populated here -->
+                            <tr>
+                                <td colspan="6" class="text-center py-10 text-slate-400">데이터를 로드하는 중입니다...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full py-4 text-center text-xs text-slate-500 border-t border-slate-200 dark:border-slate-800 bg-white/30 dark:bg-slate-900/10">
+        © 2026 StockAlert App. Designed for local UI prototyping & easy maintenance.
+    </footer>
+
+    <!-- App JavaScript Logic -->
+    <script>
+        // --- State Management ---
+        let alerts = [];
+        let settings = { telegram_token: "", telegram_chat_id: "", check_interval: 60 };
+        let searchTimeout = null;
+
+        // Search & Sort state
+        let listSearchQuery = "";
+        let currentSortCol = null; // 'name', 'price', 'target_price', 'enabled'
+        let currentSortDir = 'asc'; // 'asc', 'desc'
+
+        // --- DOM Elements ---
+        const themeToggle = document.getElementById('themeToggle');
+        const sunIcon = document.getElementById('sunIcon');
+        const moonIcon = document.getElementById('moonIcon');
+        
+        const searchInput = document.getElementById('searchInput');
+        const searchResults = document.getElementById('searchResults');
+        
+        const alertForm = document.getElementById('alertForm');
+        const formAlertId = document.getElementById('formAlertId');
+        const formTicker = document.getElementById('formTicker');
+        const formName = document.getElementById('formName');
+        const formExchange = document.getElementById('formExchange');
+        const formCondition = document.getElementById('formCondition');
+        const formTargetPrice = document.getElementById('formTargetPrice');
+        const submitBtn = document.getElementById('submitBtn');
+        const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+        const settingsForm = document.getElementById('settingsForm');
+        const settToken = document.getElementById('settToken');
+        const settChatId = document.getElementById('settChatId');
+        const settInterval = document.getElementById('settInterval');
+        const testTelegramBtn = document.getElementById('testTelegramBtn');
+        const manualCheckBtn = document.getElementById('manualCheckBtn');
+
+        const watchlistTableBody = document.getElementById('watchlistTableBody');
+        const watchlistCount = document.getElementById('watchlistCount');
+        const watchlistSearchInput = document.getElementById('watchlistSearchInput');
+
+        // Cards for theme styling
+        const cards = [
+            document.getElementById('searchCard'),
+            document.getElementById('settingsCard'),
+            document.getElementById('watchlistCard')
+        ];
+
+        // --- Theme System ---
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            if (savedTheme === 'light') {
+                document.documentElement.classList.remove('dark');
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+                applyThemeStyles(false);
+            } else {
+                document.documentElement.classList.add('dark');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+                applyThemeStyles(true);
+            }
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            
+            if (isDark) {
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            } else {
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            }
+            applyThemeStyles(isDark);
+        }
+
+        function applyThemeStyles(isDark) {
+            const body = document.body;
+            if (isDark) {
+                body.className = "bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans transition-colors duration-300";
+                cards.forEach(card => {
+                    card.className = card.className.replace('glass-light', 'glass-dark');
+                });
+            } else {
+                body.className = "bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans transition-colors duration-300";
+                cards.forEach(card => {
+                    card.className = card.className.replace('glass-dark', 'glass-light');
+                });
+            }
+        }
+
+        themeToggle.addEventListener('click', toggleTheme);
+
+        // --- API Connections ---
+
+        async function fetchSettings() {
+            try {
+                const r = await fetch('/api/settings');
+                settings = await r.json();
+                settToken.value = settings.telegram_token;
+                settChatId.value = settings.telegram_chat_id;
+                settInterval.value = settings.check_interval;
+            } catch (e) {
+                console.error("Error loading settings:", e);
+            }
+        }
+
+        async function saveSettings(e) {
+            e.preventDefault();
+            const payload = {
+                telegram_token: settToken.value,
+                telegram_chat_id: settChatId.value,
+                check_interval: parseInt(settInterval.value)
+            };
+            try {
+                const r = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const res = await r.json();
+                alert(res.message);
+                settings = payload;
+            } catch (e) {
+                alert("설정 저장에 실패했습니다.");
+            }
+        }
+
+        async function testTelegram() {
+            const token = settToken.value.strip ? settToken.value.strip() : settToken.value;
+            const chatId = settChatId.value.strip ? settChatId.value.strip() : settChatId.value;
+            if (!token || !chatId) {
+                alert("테스트를 위해선 텔레그램 토큰과 채팅 ID를 먼저 채워주세요.");
+                return;
+            }
+            testTelegramBtn.disabled = true;
+            testTelegramBtn.innerText = "전송 중...";
+            try {
+                const r = await fetch('/api/test-telegram', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_token: token, telegram_chat_id: chatId })
+                });
+                const res = await r.json();
+                if (r.ok) {
+                    alert("텔레그램 앱으로 테스트 알림이 발송되었습니다!");
+                } else {
+                    alert("오류 발생: " + res.detail);
+                }
+            } catch (e) {
+                alert("네트워크 오류가 발생했습니다.");
+            } finally {
+                testTelegramBtn.disabled = false;
+                testTelegramBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-brand-500">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                    </svg> 텔레그램 알림 테스트`;
+            }
+        }
+
+        async function triggerManualCheck() {
+            manualCheckBtn.disabled = true;
+            manualCheckBtn.innerText = "감시 검사 중...";
+            try {
+                const r = await fetch('/api/check', { method: 'POST' });
+                const res = await r.json();
+                alert("주가 비교 판정 검사가 백그라운드에서 실행되었습니다. 가격 조건 충족 시 알림이 발송됩니다.");
+                // Fetch watchlist immediately to refresh triggered states
+                setTimeout(fetchWatchlist, 2000);
+            } catch (e) {
+                alert("검사 실행에 실패했습니다.");
+            } finally {
+                manualCheckBtn.disabled = false;
+                manualCheckBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg> 지금 즉시 가격 판정 검사 실행`;
+            }
+        }
+
+        async function fetchWatchlist() {
+            try {
+                const r = await fetch('/api/alerts');
+                const newAlerts = await r.json();
+                
+                // Copy loaded prices from old alerts array to prevent UI price flicker
+                newAlerts.forEach(newItem => {
+                    const oldItem = alerts.find(a => a.id === newItem.id);
+                    if (oldItem && oldItem.price) {
+                        newItem.price = oldItem.price;
+                    }
+                });
+                
+                alerts = newAlerts;
+                renderWatchlist();
+            } catch (e) {
+                console.error("Error fetching watchlist:", e);
+            }
+        }
+
+        // --- Render UI Table ---
+
+        async function renderWatchlist() {
+            let filteredAlerts = [...alerts];
+            
+            // 1. Filter by search query
+            if (listSearchQuery) {
+                filteredAlerts = filteredAlerts.filter(item => 
+                    item.name.toLowerCase().includes(listSearchQuery) || 
+                    item.ticker.toLowerCase().includes(listSearchQuery)
+                );
+            }
+            
+            // 2. Sort by current column
+            if (currentSortCol) {
+                filteredAlerts.sort((a, b) => {
+                    let valA, valB;
+                    if (currentSortCol === 'name') {
+                        valA = a.name.toLowerCase();
+                        valB = b.name.toLowerCase();
+                    } else if (currentSortCol === 'price') {
+                        valA = a.price || 0;
+                        valB = b.price || 0;
+                    } else if (currentSortCol === 'target_price') {
+                        valA = a.target_price;
+                        valB = b.target_price;
+                    } else if (currentSortCol === 'enabled') {
+                        valA = a.enabled;
+                        valB = b.enabled;
+                    }
+                    
+                    if (valA < valB) return currentSortDir === 'asc' ? -1 : 1;
+                    if (valA > valB) return currentSortDir === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            }
+
+            if (filteredAlerts.length === 0) {
+                watchlistTableBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center py-10 text-slate-400 dark:text-slate-500">
+                            ${listSearchQuery ? '검색 조건과 일치하는 종목이 없습니다.' : '등록된 감시 종목이 없습니다.'}
+                        </td>
+                    </tr>`;
+                watchlistCount.innerText = `총 0 / ${alerts.length}개 종목`;
+                return;
+            }
+            
+            watchlistCount.innerText = listSearchQuery 
+                ? `검색 결과 ${filteredAlerts.length} / ${alerts.length}개` 
+                : `총 ${alerts.length}개 종목`;
+            
+            let rowsHtml = "";
+            for (let item of filteredAlerts) {
+                const isEnabled = item.enabled === 1;
+                const badgeColor = isEnabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400';
+                const statusText = isEnabled ? '감시 중' : '중지됨';
+                
+                // Show a clean visual flag if alert sent today
+                const todayStr = new Date().toISOString().split('T')[0];
+                const alertedToday = item.last_alert_date === todayStr;
+                const todayAlertBadge = alertedToday 
+                    ? `<span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 font-semibold text-xs">알림 완료</span>`
+                    : `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-500 text-xs">미발송</span>`;
+
+                rowsHtml += `
+                    <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
+                        <td class="py-3.5 px-4">
+                            <div class="flex items-center gap-1.5 group">
+                                <div class="font-medium text-slate-800 dark:text-white">${item.name}</div>
+                                <button type="button" onclick="copyTickerNumber('${item.ticker}', event)" class="p-0.5 rounded text-slate-400 hover:text-brand-500 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-slate-850/50 transition-all opacity-100" title="종목 코드 복사">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H5.25m11.9-3.664A2.251 2.251 0 0015 2.25h-1.5a2.25 2.25 0 00-2.25 2.25v1.5a2.25 2.25 0 002.25 2.25H15a2.25 2.25 0 002.25-2.25v-1.5a2.25 2.25 0 00-.35-1.164z" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="text-xs text-slate-400 dark:text-slate-500">${item.ticker}</div>
+                        </td>
+                        <td class="py-3.5 px-4 font-mono font-medium text-slate-700 dark:text-slate-300" id="price-${item.id}">
+                            ${item.price && item.price > 0 ? `${item.price.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}원` : '로딩 중...'}
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                            <span class="font-mono text-xs px-2 py-1 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400 font-semibold border border-brand-100 dark:border-brand-500/20">
+                                ${item.condition} ${item.target_price.toLocaleString()}원
+                            </span>
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                            ${todayAlertBadge}
+                            <div class="text-[10px] text-slate-400 mt-0.5">${item.last_alert_date || '-'}</div>
+                        </td>
+                        <td class="py-3.5 px-4 text-center">
+                            <button onclick="toggleAlertStatus(${item.id})" class="px-2.5 py-1 rounded-full text-xs font-semibold ${badgeColor} transition-all border border-transparent hover:border-slate-300 dark:hover:border-slate-700">
+                                ${statusText}
+                            </button>
+                        </td>
+                        <td class="py-3.5 px-4 text-right">
+                            <div class="flex items-center justify-end gap-2">
+                                <button onclick="editAlert(${item.id})" class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors" title="수정">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                                    </svg>
+                                </button>
+                                <button onclick="deleteAlert(${item.id})" class="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors" title="삭제">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`;
+            }
+            watchlistTableBody.innerHTML = rowsHtml;
+            
+            // Asynchronously load prices so table loads instantly without blocking rendering
+            filteredAlerts.forEach(async (item) => {
+                if (!item.price) {
+                    await loadPrice(item);
+                }
+            });
+        }
+
+        async function loadPrice(item) {
+            try {
+                // Fetch using a public Yahoo Finance API directly in JS! This is incredibly fast and needs zero keys.
+                const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${item.ticker}?interval=1m&range=1d`;
+                const yfResponse = await fetch(yfUrl);
+                const yfData = await yfResponse.json();
+                const currentPrice = yfData.chart.result[0].meta.regularMarketPrice;
+                if (currentPrice) {
+                    item.price = currentPrice;
+                    const priceCell = document.getElementById(`price-${item.id}`);
+                    if (priceCell) {
+                        priceCell.innerText = `${currentPrice.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}원`;
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load price for ticker:", item.ticker, e);
+                const priceCell = document.getElementById(`price-${item.id}`);
+                if (priceCell) {
+                    priceCell.innerText = 'N/A';
+                }
+            }
+        }
+
+        // --- Clipboard Copy Ticker Code ---
+
+        function copyTickerNumber(ticker, event) {
+            event.stopPropagation();
+            // Extract digits only for Korean stocks (e.g. 005930 from 005930.KS), keep original for US (e.g. AAPL)
+            const cleanCode = ticker.split('.')[0];
+            
+            navigator.clipboard.writeText(cleanCode).then(() => {
+                showToast(`종목 코드 '${cleanCode}'가 복사되었습니다.`);
+            }).catch(err => {
+                console.error("Failed to copy text: ", err);
+                alert("코드 복사에 실패했습니다.");
+            });
+        }
+
+        function showToast(message) {
+            const oldToast = document.getElementById('app-toast');
+            if (oldToast) oldToast.remove();
+            
+            const toast = document.createElement("div");
+            toast.id = "app-toast";
+            toast.className = "fixed bottom-8 left-1/2 transform -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-xs font-semibold shadow-2xl transition-all duration-300 opacity-0 translate-y-2 z-50 border border-slate-800 dark:border-slate-700/80 flex items-center gap-2";
+            toast.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-emerald-500">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove("opacity-0", "translate-y-2");
+                toast.classList.add("opacity-100", "translate-y-0");
+            }, 50);
+            
+            setTimeout(() => {
+                toast.classList.remove("opacity-100", "translate-y-0");
+                toast.classList.add("opacity-0", "translate-y-2");
+                setTimeout(() => toast.remove(), 300);
+            }, 2500);
+        }
+
+        // --- Table Header Sorting ---
+
+        function handleSort(column) {
+            if (currentSortCol === column) {
+                // Toggle direction
+                currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSortCol = column;
+                currentSortDir = 'asc';
+            }
+            
+            // Update UI sorting indicators
+            const cols = ['name', 'price', 'target_price', 'enabled'];
+            cols.forEach(col => {
+                const icon = document.getElementById(`sort-${col}-icon`);
+                if (icon) {
+                    if (col === column) {
+                        icon.innerText = currentSortDir === 'asc' ? '▲' : '▼';
+                        icon.className = "ml-1 text-brand-500 font-bold";
+                    } else {
+                        icon.innerText = "↕";
+                        icon.className = "ml-1 text-slate-400 dark:text-slate-500";
+                    }
+                }
+            });
+            
+            renderWatchlist();
+        }
+
+        // --- Autocomplete Stock Search ---
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = searchInput.value.trim();
+            
+            if (query.length < 1) {
+                searchResults.classList.add('hidden');
+                return;
+            }
+            
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const r = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                    const results = await r.json();
+                    
+                    if (results.length === 0) {
+                        searchResults.innerHTML = `<div class="p-3 text-sm text-slate-500 dark:text-slate-400 text-center">검색 결과가 없습니다.</div>`;
+                        searchResults.classList.remove('hidden');
+                        return;
+                    }
+                    
+                    let itemsHtml = "";
+                    results.forEach(item => {
+                        itemsHtml += `
+                            <button type="button" onclick="selectStock('${item.ticker}', '${item.name}', '${item.exchange}')" 
+                                    class="w-full text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800/40 last:border-b-0 transition-colors flex justify-between items-center">
+                                <div>
+                                    <div class="font-medium text-slate-800 dark:text-white text-sm">${item.name}</div>
+                                    <div class="text-xs text-slate-400 dark:text-slate-500">${item.ticker}</div>
+                                </div>
+                                <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/60 font-semibold uppercase">
+                                    ${item.exchange}
+                                </span>
+                            </button>`;
+                    });
+                    searchResults.innerHTML = itemsHtml;
+                    searchResults.classList.remove('hidden');
+                } catch (e) {
+                    console.error("Search failed:", e);
+                }
+            }, 300); // 300ms Debouncing
+        });
+
+        // Hide search results when clicking outside
+        document.addEventListener('click', function(e) {
+            if (e.target !== searchInput && e.target !== searchResults) {
+                searchResults.classList.add('hidden');
+            }
+        });
+
+        function selectStock(ticker, name, exchange) {
+            formTicker.value = ticker;
+            formName.value = name;
+            formExchange.value = exchange;
+            searchResults.classList.add('hidden');
+            searchInput.value = "";
+            formTargetPrice.focus();
+        }
+
+        // --- Alert CRUD handlers ---
+
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            const alertId = formAlertId.value;
+            const payload = {
+                ticker: formTicker.value,
+                name: formName.value,
+                condition: formCondition.value,
+                target_price: parseFloat(formTargetPrice.value),
+                enabled: 1
+            };
+            
+            try {
+                let r, res;
+                if (alertId) {
+                    // Update
+                    r = await fetch(`/api/alerts/${alertId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({...payload, enabled: alerts.find(a => a.id === parseInt(alertId)).enabled})
+                    });
+                } else {
+                    // Create
+                    r = await fetch('/api/alerts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+                
+                res = await r.json();
+                if (r.ok) {
+                    alert(res.message);
+                    resetAlertForm();
+                    fetchWatchlist();
+                } else {
+                    alert("오류 발생: " + res.detail);
+                }
+            } catch (e) {
+                alert("알림 설정에 실패했습니다.");
+            }
+        }
+
+        async function toggleAlertStatus(alertId) {
+            const item = alerts.find(a => a.id === alertId);
+            if (!item) return;
+            
+            const updatedPayload = {
+                ticker: item.ticker,
+                name: item.name,
+                condition: item.condition,
+                target_price: item.target_price,
+                enabled: item.enabled === 1 ? 0 : 1
+            };
+            
+            try {
+                const r = await fetch(`/api/alerts/${alertId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedPayload)
+                });
+                if (r.ok) {
+                    fetchWatchlist();
+                }
+            } catch (e) {
+                console.error("Failed to toggle status:", e);
+            }
+        }
+
+        function editAlert(alertId) {
+            const item = alerts.find(a => a.id === alertId);
+            if (!item) return;
+            
+            formAlertId.value = item.id;
+            formTicker.value = item.ticker;
+            formName.value = item.name;
+            formExchange.value = "자동입력";
+            formCondition.value = item.condition;
+            formTargetPrice.value = item.target_price;
+            
+            submitBtn.innerText = "알림 설정 수정";
+            cancelEditBtn.classList.remove('hidden');
+            document.getElementById('searchCard').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function resetAlertForm() {
+            formAlertId.value = "";
+            formTicker.value = "";
+            formName.value = "";
+            formExchange.value = "";
+            formCondition.value = ">=";
+            formTargetPrice.value = "";
+            submitBtn.innerText = "알림 추가하기";
+            cancelEditBtn.classList.add('hidden');
+        }
+
+        async function deleteAlert(alertId) {
+            if (!confirm("정말 이 알림 감시를 삭제하시겠습니까?")) return;
+            
+            try {
+                const r = await fetch(`/api/alerts/${alertId}`, { method: 'DELETE' });
+                const res = await r.json();
+                alert(res.message);
+                fetchWatchlist();
+            } catch (e) {
+                alert("삭제에 실패했습니다.");
+            }
+        }
+
+        cancelEditBtn.addEventListener('click', resetAlertForm);
+        alertForm.addEventListener('submit', handleFormSubmit);
+        settingsForm.addEventListener('submit', saveSettings);
+        testTelegramBtn.addEventListener('click', testTelegram);
+        manualCheckBtn.addEventListener('click', triggerManualCheck);
+
+        // Filter search input for watchlist
+        watchlistSearchInput.addEventListener('input', function() {
+            listSearchQuery = watchlistSearchInput.value.trim().toLowerCase();
+            renderWatchlist();
+        });
+
+        // --- App Initialization ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initTheme();
+            fetchSettings();
+            fetchWatchlist();
+            
+            // Periodically refresh watchlist prices (every 30 seconds)
+            setInterval(fetchWatchlist, 30000);
+        });
+    </script>
+</body>
+</html>
