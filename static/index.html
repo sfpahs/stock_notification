@@ -142,15 +142,20 @@
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">조건</label>
-                            <select id="formCondition" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
-                                <option value=">=">&gt;= (이상)</option>
-                                <option value="<=">&lt;= (이하)</option>
-                            </select>
+                            <input type="hidden" id="formCondition" value=">=">
+                            <div class="flex rounded-xl p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 h-[46px] items-center">
+                                <button type="button" id="btnCondAbove" class="flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-white bg-brand-600 shadow-sm focus:outline-none">
+                                    이상 (>=)
+                                </button>
+                                <button type="button" id="btnCondBelow" class="flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white focus:outline-none">
+                                    이하 (<=)
+                                </button>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">목표 가격</label>
                             <input type="number" step="any" id="formTargetPrice" required placeholder="예: 75000"
-                                   class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                                   class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm h-[46px]">
                         </div>
                     </div>
 
@@ -305,6 +310,8 @@
         const formName = document.getElementById('formName');
         const formExchange = document.getElementById('formExchange');
         const formCondition = document.getElementById('formCondition');
+        const btnCondAbove = document.getElementById('btnCondAbove');
+        const btnCondBelow = document.getElementById('btnCondBelow');
         const formTargetPrice = document.getElementById('formTargetPrice');
         const submitBtn = document.getElementById('submitBtn');
         const cancelEditBtn = document.getElementById('cancelEditBtn');
@@ -869,6 +876,17 @@
             }
         }
 
+        function updateConditionUI(cond) {
+            formCondition.value = cond;
+            if (cond === '>=') {
+                btnCondAbove.className = "flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-white bg-brand-600 shadow-sm focus:outline-none";
+                btnCondBelow.className = "flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white focus:outline-none";
+            } else {
+                btnCondBelow.className = "flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-white bg-brand-600 shadow-sm focus:outline-none";
+                btnCondAbove.className = "flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white focus:outline-none";
+            }
+        }
+
         function editAlert(alertId) {
             const item = alerts.find(a => a.id === alertId);
             if (!item) return;
@@ -877,7 +895,7 @@
             formTicker.value = item.ticker;
             formName.value = item.name;
             formExchange.value = "자동입력";
-            formCondition.value = item.condition;
+            updateConditionUI(item.condition);
             formTargetPrice.value = item.target_price;
             
             submitBtn.innerText = "알림 설정 수정";
@@ -890,7 +908,7 @@
             formTicker.value = "";
             formName.value = "";
             formExchange.value = "";
-            formCondition.value = ">=";
+            updateConditionUI(">=");
             formTargetPrice.value = "";
             submitBtn.innerText = "알림 추가하기";
             cancelEditBtn.classList.add('hidden');
@@ -914,6 +932,8 @@
         settingsForm.addEventListener('submit', saveSettings);
         testTelegramBtn.addEventListener('click', testTelegram);
         detectChatIdBtn.addEventListener('click', detectChatId);
+        btnCondAbove.addEventListener('click', () => updateConditionUI('>='));
+        btnCondBelow.addEventListener('click', () => updateConditionUI('<='));
         manualCheckBtn.addEventListener('click', triggerManualCheck);
 
         // Filter search input for watchlist
@@ -925,6 +945,7 @@
         // --- App Initialization ---
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
+            updateConditionUI('>='); // Set default condition UI state
             fetchSettings();
             fetchWatchlist();
             
