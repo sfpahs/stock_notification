@@ -635,34 +635,56 @@
             }
             watchlistTableBody.innerHTML = rowsHtml;
             
-            // Asynchronously load prices so table loads instantly without blocking rendering
-            filteredAlerts.forEach(async (item) => {
-                if (!item.price) {
-                    await loadPrice(item);
+            // Asynchronously load prices so table loads instantly without blocking rendering.
+            // Deduplicate ticker requests to avoid querying the same stock multiple times.
+            const uniqueTickers = [...new Set(filteredAlerts.map(item => item.ticker))];
+            uniqueTickers.forEach(ticker => {
+                const needsLoad = filteredAlerts.some(item => item.ticker === ticker && !item.price);
+                if (needsLoad) {
+                    loadPrice(ticker);
                 }
             });
         }
 
-        async function loadPrice(item) {
+        // Keep track of active requests to prevent concurrent redundant fetches for the same ticker
+        let loadingTickers = new Set();
+
+        async function loadPrice(ticker) {
+            if (loadingTickers.has(ticker)) return;
+            loadingTickers.add(ticker);
+            
             try {
-                // Fetch using a public Yahoo Finance API directly in JS! This is incredibly fast and needs zero keys.
-                const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${item.ticker}?interval=1m&range=1d`;
+                // Fetch using a public Yahoo Finance API directly in JS
+                const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d`;
                 const yfResponse = await fetch(yfUrl);
                 const yfData = await yfResponse.json();
                 const currentPrice = yfData.chart.result[0].meta.regularMarketPrice;
+                
                 if (currentPrice) {
-                    item.price = currentPrice;
-                    const priceCell = document.getElementById(`price-${item.id}`);
-                    if (priceCell) {
-                        priceCell.innerText = `${currentPrice.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}원`;
-                    }
+                    // Update the price for all alerts that have the same ticker
+                    alerts.forEach(item => {
+                        if (item.ticker.toUpperCase() === ticker.toUpperCase()) {
+                            item.price = currentPrice;
+                            const priceCell = document.getElementById(`price-${item.id}`);
+                            if (priceCell) {
+                                priceCell.innerText = `${currentPrice.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}원`;
+                            }
+                        }
+                    });
                 }
             } catch (e) {
-                console.error("Failed to load price for ticker:", item.ticker, e);
-                const priceCell = document.getElementById(`price-${item.id}`);
-                if (priceCell) {
-                    priceCell.innerText = 'N/A';
-                }
+                console.error("Failed to load price for ticker:", ticker, e);
+                // Fallback to N/A on error for all matched alerts
+                alerts.forEach(item => {
+                    if (item.ticker.toUpperCase() === ticker.toUpperCase()) {
+                        const priceCell = document.getElementById(`price-${item.id}`);
+                        if (priceCell && priceCell.innerText === '로딩 중...') {
+                            priceCell.innerText = 'N/A';
+                        }
+                    }
+                });
+            } finally {
+                loadingTickers.delete(ticker);
             }
         }
 

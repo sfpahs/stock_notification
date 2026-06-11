@@ -77,6 +77,9 @@ async def price_monitor_loop():
             
             today_str = datetime.date.today().isoformat()
             
+            # Cache to store fetched prices for this cycle to avoid duplicate API requests
+            price_cache = {}
+            
             for alert in active_alerts:
                 ticker = alert["ticker"]
                 target = alert["target_price"]
@@ -89,8 +92,15 @@ async def price_monitor_loop():
                 if last_date == today_str:
                     continue
                 
-                # Fetch price
-                price = stock_api.fetch_stock_price(ticker)
+                # Fetch price (Use cache if already fetched in this cycle)
+                if ticker in price_cache:
+                    price = price_cache[ticker]
+                else:
+                    price = stock_api.fetch_stock_price(ticker)
+                    price_cache[ticker] = price
+                    # Throttling delay to avoid hitting rate limits (only on actual API hit)
+                    await asyncio.sleep(0.3)
+                
                 if price is None:
                     print(f"[{ticker}] Failed to fetch price. Skipping.")
                     continue
@@ -122,9 +132,6 @@ async def price_monitor_loop():
                         # For testing mode without API keys, we still trigger the UI state change
                         database.update_last_alert_date(alert_id, today_str)
                         print(f"[{ticker}] (Mock Mode) Alert marked as triggered in UI.")
-                
-                # Throttling delay to avoid hitting rate limits
-                await asyncio.sleep(0.3)
                 
         except Exception as e:
             print(f"Error in price_monitor_loop: {e}")
@@ -296,10 +303,21 @@ async def api_trigger_check(background_tasks: BackgroundTasks):
         active_alerts = [a for a in alerts if a["enabled"] == 1]
         today_str = datetime.date.today().isoformat()
         
+        # Cache to store fetched prices for this manual check cycle
+        price_cache = {}
+        
         for alert in active_alerts:
             # Recheck trigger condition (forces check regardless of last_alert_date for manual trigger)
             ticker = alert["ticker"]
-            price = stock_api.fetch_stock_price(ticker)
+            
+            # Fetch price (Use cache if already fetched in this cycle)
+            if ticker in price_cache:
+                price = price_cache[ticker]
+            else:
+                price = stock_api.fetch_stock_price(ticker)
+                price_cache[ticker] = price
+                await asyncio.sleep(0.3)
+                
             if price is not None:
                 triggered = False
                 if alert["condition"] == "<=" and price <= alert["target_price"]:
@@ -318,7 +336,6 @@ async def api_trigger_check(background_tasks: BackgroundTasks):
                         database.update_last_alert_date(alert["id"], today_str)
                     else:
                         database.update_last_alert_date(alert["id"], today_str)
-            await asyncio.sleep(0.3)
             
     background_tasks.add_task(run_check_once)
     return {"status": "success", "message": "Manual check queued."}
