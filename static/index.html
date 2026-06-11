@@ -114,11 +114,12 @@
                 
                 <!-- Search Box -->
                 <div class="relative">
-                    <input type="text" id="searchInput" placeholder="주식명 또는 티커 검색 (예: 삼성전자, AAPL)" 
+                    <input type="text" id="searchInput" placeholder="주식명 또는 티커 검색 (예: 삼성전자, 5930, AAPL)"
+                           autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="searchResults"
                            class="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 placeholder-slate-400 text-sm transition-all">
                     
                     <!-- Search Results Suggestion Box -->
-                    <div id="searchResults" class="absolute left-0 right-0 mt-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-60 overflow-y-auto hidden custom-scrollbar z-50">
+                    <div id="searchResults" role="listbox" class="absolute left-0 right-0 mt-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-60 overflow-y-auto hidden custom-scrollbar z-50">
                         <!-- Suggestion Items dynamically inserted here -->
                     </div>
                 </div>
@@ -145,10 +146,10 @@
                             <input type="hidden" id="formCondition" value=">=">
                             <div class="flex rounded-xl p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 h-[46px] items-center">
                                 <button type="button" id="btnCondAbove" class="flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-white bg-brand-600 shadow-sm focus:outline-none">
-                                    이상 (>=)
+                                    이상
                                 </button>
                                 <button type="button" id="btnCondBelow" class="flex-1 py-2 rounded-lg text-xs font-semibold transition-all text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white focus:outline-none">
-                                    이하 (<=)
+                                    이하
                                 </button>
                             </div>
                         </div>
@@ -296,6 +297,9 @@
         let alerts = [];
         let settings = { telegram_token: "", telegram_chat_id: "", check_interval: 60 };
         let searchTimeout = null;
+        let autocompleteResults = [];
+        let autocompleteSelectedIndex = -1;
+        let autocompleteRequestId = 0;
 
         // Search & Sort state
         let listSearchQuery = "";
@@ -593,6 +597,10 @@
                 const isEnabled = item.enabled === 1;
                 const badgeColor = isEnabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400';
                 const statusText = isEnabled ? '감시 중' : '중지됨';
+                const isAboveCondition = item.condition.includes('>');
+                const conditionBadgeColor = isAboveCondition
+                    ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30'
+                    : 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30';
                 
                 // Show a clean visual flag if alert sent today
                 const todayStr = new Date().toISOString().split('T')[0];
@@ -621,7 +629,7 @@
                             ${item.price && item.price > 0 ? `${item.price.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}원` : '로딩 중...'}
                         </td>
                         <td class="py-3.5 px-4 text-center">
-                            <span class="font-mono text-xs px-2 py-1 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400 font-semibold border border-brand-100 dark:border-brand-500/20">
+                            <span class="font-mono text-xs px-2 py-1 rounded font-semibold border ${conditionBadgeColor}">
                                 ${item.condition} ${item.target_price.toLocaleString()}원
                             </span>
                         </td>
@@ -778,61 +786,166 @@
 
         // --- Autocomplete Stock Search ---
 
-        searchInput.addEventListener('input', function() {
+        function escapeAutocompleteText(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#039;');
+        }
+
+        function hideAutocomplete() {
+            searchResults.classList.add('hidden');
+            searchInput.setAttribute('aria-expanded', 'false');
+            searchInput.removeAttribute('aria-activedescendant');
+        }
+
+        function renderAutocomplete() {
+            if (autocompleteResults.length === 0) {
+                searchResults.innerHTML = `<div class="p-3 text-sm text-slate-500 dark:text-slate-400 text-center">검색 결과가 없습니다.</div>`;
+            } else {
+                const itemsHtml = autocompleteResults.map((item, index) => {
+                    const isSelected = index === autocompleteSelectedIndex;
+                    const selectedClass = isSelected
+                        ? 'bg-brand-50 dark:bg-brand-500/20 ring-1 ring-inset ring-brand-500/50'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800';
+                    const tabHint = isSelected
+                        ? `<span class="text-[10px] px-2 py-1 rounded-md bg-brand-600 text-white font-semibold whitespace-nowrap">Tab 자동완성</span>`
+                        : '';
+
+                    return `
+                        <button type="button" id="autocomplete-option-${index}" role="option"
+                                aria-selected="${isSelected}" data-autocomplete-index="${index}"
+                                class="w-full text-left p-3 ${selectedClass} border-b border-slate-100 dark:border-slate-800/40 transition-colors flex justify-between items-center gap-3">
+                            <div class="min-w-0">
+                                <div class="font-medium text-slate-800 dark:text-white text-sm truncate">${escapeAutocompleteText(item.name)}</div>
+                                <div class="text-xs text-slate-400 dark:text-slate-500">${escapeAutocompleteText(item.ticker)}</div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                ${tabHint}
+                                <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/60 font-semibold uppercase">
+                                    ${escapeAutocompleteText(item.exchange)}
+                                </span>
+                            </div>
+                        </button>`;
+                }).join('');
+
+                searchResults.innerHTML = `${itemsHtml}
+                    <div class="sticky bottom-0 px-3 py-2 bg-slate-50/95 dark:bg-slate-950/95 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex justify-end gap-3">
+                        <span><kbd class="font-sans px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700">↑↓</kbd> 선택</span>
+                        <span><kbd class="font-sans px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700">Tab</kbd> 자동완성</span>
+                    </div>`;
+            }
+
+            searchResults.classList.remove('hidden');
+            searchInput.setAttribute('aria-expanded', 'true');
+            if (autocompleteSelectedIndex >= 0) {
+                const selectedOption = document.getElementById(`autocomplete-option-${autocompleteSelectedIndex}`);
+                searchInput.setAttribute('aria-activedescendant', selectedOption.id);
+                selectedOption.scrollIntoView({ block: 'nearest' });
+            } else {
+                searchInput.removeAttribute('aria-activedescendant');
+            }
+        }
+
+        async function runStockSearch(query) {
+            const requestId = ++autocompleteRequestId;
+            try {
+                const r = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                const results = await r.json();
+
+                if (requestId !== autocompleteRequestId || query !== searchInput.value.trim()) return;
+
+                autocompleteResults = results;
+                autocompleteSelectedIndex = results.length > 0 ? 0 : -1;
+                renderAutocomplete();
+            } catch (e) {
+                console.error("Search failed:", e);
+            }
+        }
+
+        function requestStockSearch({ immediate = false } = {}) {
             clearTimeout(searchTimeout);
             const query = searchInput.value.trim();
-            
+
             if (query.length < 1) {
-                searchResults.classList.add('hidden');
+                autocompleteRequestId++;
+                autocompleteResults = [];
+                autocompleteSelectedIndex = -1;
+                hideAutocomplete();
                 return;
             }
-            
-            searchTimeout = setTimeout(async () => {
-                try {
-                    const r = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-                    const results = await r.json();
-                    
-                    if (results.length === 0) {
-                        searchResults.innerHTML = `<div class="p-3 text-sm text-slate-500 dark:text-slate-400 text-center">검색 결과가 없습니다.</div>`;
-                        searchResults.classList.remove('hidden');
-                        return;
-                    }
-                    
-                    let itemsHtml = "";
-                    results.forEach(item => {
-                        itemsHtml += `
-                            <button type="button" onclick="selectStock('${item.ticker}', '${item.name}', '${item.exchange}')" 
-                                    class="w-full text-left p-3 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800/40 last:border-b-0 transition-colors flex justify-between items-center">
-                                <div>
-                                    <div class="font-medium text-slate-800 dark:text-white text-sm">${item.name}</div>
-                                    <div class="text-xs text-slate-400 dark:text-slate-500">${item.ticker}</div>
-                                </div>
-                                <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/60 font-semibold uppercase">
-                                    ${item.exchange}
-                                </span>
-                            </button>`;
-                    });
-                    searchResults.innerHTML = itemsHtml;
-                    searchResults.classList.remove('hidden');
-                } catch (e) {
-                    console.error("Search failed:", e);
-                }
-            }, 300); // 300ms Debouncing
+
+            searchTimeout = setTimeout(() => runStockSearch(query), immediate ? 0 : 300);
+        }
+
+        searchInput.addEventListener('input', function() {
+            requestStockSearch();
+        });
+
+        searchInput.addEventListener('focus', function() {
+            requestStockSearch({ immediate: true });
+        });
+
+        searchInput.addEventListener('keydown', function(e) {
+            const hasResults = !searchResults.classList.contains('hidden') && autocompleteResults.length > 0;
+
+            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && hasResults) {
+                e.preventDefault();
+                const direction = e.key === 'ArrowDown' ? 1 : -1;
+                autocompleteSelectedIndex = (autocompleteSelectedIndex + direction + autocompleteResults.length) % autocompleteResults.length;
+                renderAutocomplete();
+                return;
+            }
+
+            if ((e.key === 'Tab' || e.key === 'Enter') && hasResults) {
+                e.preventDefault();
+                const index = autocompleteSelectedIndex >= 0 ? autocompleteSelectedIndex : 0;
+                selectAutocompleteResult(index);
+                return;
+            }
+
+            if (e.key === 'Escape') {
+                hideAutocomplete();
+            }
+        });
+
+        searchResults.addEventListener('mousemove', function(e) {
+            const option = e.target.closest('[data-autocomplete-index]');
+            if (!option) return;
+            const index = Number(option.dataset.autocompleteIndex);
+            if (index !== autocompleteSelectedIndex) {
+                autocompleteSelectedIndex = index;
+                renderAutocomplete();
+            }
+        });
+
+        searchResults.addEventListener('click', function(e) {
+            const option = e.target.closest('[data-autocomplete-index]');
+            if (option) selectAutocompleteResult(Number(option.dataset.autocompleteIndex));
         });
 
         // Hide search results when clicking outside
         document.addEventListener('click', function(e) {
-            if (e.target !== searchInput && e.target !== searchResults) {
-                searchResults.classList.add('hidden');
+            if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                hideAutocomplete();
             }
         });
+
+        function selectAutocompleteResult(index) {
+            const item = autocompleteResults[index];
+            if (item) selectStock(item.ticker, item.name, item.exchange);
+        }
 
         function selectStock(ticker, name, exchange) {
             formTicker.value = ticker;
             formName.value = name;
             formExchange.value = exchange;
-            searchResults.classList.add('hidden');
+            hideAutocomplete();
             searchInput.value = "";
+            autocompleteResults = [];
+            autocompleteSelectedIndex = -1;
             formTargetPrice.focus();
         }
 

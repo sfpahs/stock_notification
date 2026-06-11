@@ -26,12 +26,17 @@ def search_stocks(query: str):
     if not query or len(query.strip()) < 1:
         return []
     
-    q_clean = query.strip().lower()
+    query_clean = query.strip()
+    if query_clean.isdigit() and len(query_clean) <= 6:
+        query_clean = query_clean.zfill(6)
+
+    q_clean = query_clean.lower()
     
     # 1. Check local mapping for common Korean stocks first (for local testing prototype)
     local_results = []
     for key, val in COMMON_KOREAN_STOCKS.items():
-        if q_clean in key.lower():
+        ticker_code = val["ticker"].split(".", 1)[0].lower()
+        if q_clean in key.lower() or q_clean == ticker_code:
             # Avoid duplicates if multiple keys match
             if not any(r["ticker"] == val["ticker"] for r in local_results):
                 local_results.append({
@@ -46,14 +51,14 @@ def search_stocks(query: str):
         
     # 2. Block direct Hangul queries to Yahoo Finance to avoid 400 Bad Request errors.
     # Yahoo's autocomplete API rejects non-ASCII queries.
-    has_korean = any('\uac00' <= char <= '\ud7a3' for char in query)
+    has_korean = any('\uac00' <= char <= '\ud7a3' for char in query_clean)
     if has_korean:
         return []
         
     # 3. Live search via Yahoo Finance for English queries and numeric tickers
     url = "https://query2.finance.yahoo.com/v1/finance/search"
     params = {
-        "q": query.strip(),
+        "q": query_clean,
         "lang": "ko-KR"
     }
     

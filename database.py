@@ -172,7 +172,7 @@ def create_alert(ticker, name, condition, target_price, enabled=1):
             
         cursor.execute("""
         INSERT INTO alerts (ticker, name, condition, target_price, enabled, last_alert_date, triggered_state)
-        VALUES (?, ?, ?, ?, ?, ?, 0, 0)
+        VALUES (?, ?, ?, ?, ?, ?, 0)
         """, (ticker.strip().upper(), name.strip(), condition.strip(), float(target_price), int(enabled), ""))
         conn.commit()
         success = True
