@@ -794,10 +794,19 @@
 
         async function handleFormSubmit(e) {
             e.preventDefault();
+            const tickerVal = formTicker.value.trim();
+            const nameVal = formName.value.trim();
+            
+            if (!tickerVal || !nameVal) {
+                alert("종목 코드와 종목명이 입력되지 않았습니다. 검색창을 통해 종목을 먼저 선택해 주세요.");
+                searchInput.focus();
+                return;
+            }
+            
             const alertId = formAlertId.value;
             const payload = {
-                ticker: formTicker.value,
-                name: formName.value,
+                ticker: tickerVal,
+                name: nameVal,
                 condition: formCondition.value,
                 target_price: parseFloat(formTargetPrice.value),
                 enabled: 1

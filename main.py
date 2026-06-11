@@ -248,6 +248,9 @@ def api_list_alerts():
 
 @app.post("/api/alerts")
 def api_create_alert(data: AlertCreate):
+    if not data.ticker.strip() or not data.name.strip():
+        raise HTTPException(status_code=400, detail="종목 코드와 종목명은 필수 입력 항목입니다. 종목을 올바르게 검색하여 선택해 주세요.")
+        
     success, error_msg = database.create_alert(
         ticker=data.ticker,
         name=data.name,
@@ -261,6 +264,9 @@ def api_create_alert(data: AlertCreate):
 
 @app.put("/api/alerts/{alert_id}")
 def api_update_alert(alert_id: int, data: AlertUpdate):
+    if not data.ticker.strip() or not data.name.strip():
+        raise HTTPException(status_code=400, detail="종목 코드와 종목명은 필수 입력 항목입니다. 종목을 올바르게 검색하여 선택해 주세요.")
+        
     success, error_msg = database.update_alert(
         alert_id=alert_id,
         ticker=data.ticker,
