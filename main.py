@@ -164,6 +164,80 @@ def api_test_telegram(data: TelegramTest):
     else:
         raise HTTPException(status_code=400, detail=f"Failed to send test message: {resp}")
 
+class TelegramTokenRequest(BaseModel):
+    telegram_token: str
+
+@app.post("/api/get-chat-id")
+def api_get_chat_id(data: TelegramTokenRequest):
+    token = data.telegram_token.strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="봇 토큰이 입력되지 않았습니다.")
+    
+    url = f"https://api.telegram.org/bot{token}/getUpdates"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code != 200:
+            raise HTTPException(status_code=400, detail=f"텔레그램 API 호출 실패 (상태 코드 {r.status_code}): {r.text}")
+        
+        res = r.json()
+        if not res.get("ok"):
+            raise HTTPException(status_code=400, detail=f"텔레그램 API 오류: {res.get('description', '알 수 없음')}")
+        
+        updates = res.get("result", [])
+        if not updates:
+            raise HTTPException(
+                status_code=404, 
+                detail="수신된 최근 메시지가 없습니다. 텔레그램 앱에서 봇에게 임의의 메시지(예: 봇 시작 또는 아무 글자)를 먼저 전송하신 후 다시 시도해 주세요."
+            )
+        
+        # 최신 메시지에서 chat_id 추출
+        latest_update = updates[-1]
+        chat_id = None
+        user_name = None
+        
+        # message, edited_message, callback_query, my_chat_member 등 파싱
+        if "message" in latest_update:
+            chat = latest_update["message"]["chat"]
+            chat_id = chat.get("id")
+            first_name = chat.get("first_name", "")
+            last_name = chat.get("last_name", "")
+            username = chat.get("username", "")
+            user_name = first_name + (" " + last_name if last_name else "") or username or "Unknown"
+        elif "edited_message" in latest_update:
+            chat = latest_update["edited_message"]["chat"]
+            chat_id = chat.get("id")
+            first_name = chat.get("first_name", "")
+            last_name = chat.get("last_name", "")
+            username = chat.get("username", "")
+            user_name = first_name + (" " + last_name if last_name else "") or username or "Unknown"
+        elif "callback_query" in latest_update:
+            chat = latest_update["callback_query"]["message"]["chat"]
+            chat_id = chat.get("id")
+            first_name = chat.get("first_name", "")
+            last_name = chat.get("last_name", "")
+            username = chat.get("username", "")
+            user_name = first_name + (" " + last_name if last_name else "") or username or "Unknown"
+        elif "my_chat_member" in latest_update:
+            chat = latest_update["my_chat_member"]["chat"]
+            chat_id = chat.get("id")
+            first_name = chat.get("first_name", "")
+            last_name = chat.get("last_name", "")
+            username = chat.get("username", "")
+            user_name = first_name + (" " + last_name if last_name else "") or username or "Unknown"
+            
+        if chat_id is None:
+            raise HTTPException(status_code=404, detail="업데이트 데이터에서 Chat ID를 파싱할 수 없습니다.")
+            
+        return {
+            "status": "success",
+            "chat_id": str(chat_id),
+            "user_name": user_name,
+            "message": f"Chat ID 감지 성공: {user_name} ({chat_id})"
+        }
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"네트워크 오류: {str(e)}")
+
+
 @app.get("/api/search")
 def api_search_stocks(q: str = ""):
     return stock_api.search_stocks(q)

@@ -186,7 +186,12 @@
                                class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Telegram Chat ID</label>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Telegram Chat ID</label>
+                            <button type="button" id="detectChatIdBtn" class="text-xs text-brand-500 dark:text-brand-400 hover:text-brand-600 dark:hover:text-brand-300 font-semibold focus:outline-none flex items-center gap-0.5 transition-colors" title="봇 토큰을 입력하고 봇에게 대화를 보낸 후 클릭하세요">
+                                🔍 Chat ID 찾기
+                            </button>
+                        </div>
                         <input type="text" id="settChatId" placeholder="수신 Chat ID 입력"
                                class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
                     </div>
@@ -307,6 +312,7 @@
         const settingsForm = document.getElementById('settingsForm');
         const settToken = document.getElementById('settToken');
         const settChatId = document.getElementById('settChatId');
+        const detectChatIdBtn = document.getElementById('detectChatIdBtn');
         const settInterval = document.getElementById('settInterval');
         const testTelegramBtn = document.getElementById('testTelegramBtn');
         const manualCheckBtn = document.getElementById('manualCheckBtn');
@@ -433,6 +439,39 @@
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-brand-500">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                     </svg> 텔레그램 알림 테스트`;
+            }
+        }
+
+        async function detectChatId() {
+            const token = settToken.value.trim();
+            if (!token) {
+                alert("먼저 Telegram Bot Token을 입력해 주세요.");
+                settToken.focus();
+                return;
+            }
+            
+            detectChatIdBtn.disabled = true;
+            detectChatIdBtn.innerText = "⏳ 감지 중...";
+            
+            try {
+                const r = await fetch('/api/get-chat-id', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telegram_token: token })
+                });
+                
+                const res = await r.json();
+                if (r.ok) {
+                    settChatId.value = res.chat_id;
+                    showToast(`Chat ID 감지 성공! (${res.user_name})`);
+                } else {
+                    alert("Chat ID 감지 실패: " + res.detail);
+                }
+            } catch (e) {
+                alert("네트워크 오류가 발생했습니다.");
+            } finally {
+                detectChatIdBtn.disabled = false;
+                detectChatIdBtn.innerHTML = "🔍 Chat ID 찾기";
             }
         }
 
@@ -865,6 +904,7 @@
         alertForm.addEventListener('submit', handleFormSubmit);
         settingsForm.addEventListener('submit', saveSettings);
         testTelegramBtn.addEventListener('click', testTelegram);
+        detectChatIdBtn.addEventListener('click', detectChatId);
         manualCheckBtn.addEventListener('click', triggerManualCheck);
 
         // Filter search input for watchlist
