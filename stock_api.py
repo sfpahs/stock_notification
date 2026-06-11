@@ -81,6 +81,12 @@ def search_stocks(query: str):
                 elif exchange == "KOE":
                     exchange = "KOSDAQ"
                 
+                # 역매핑: 야후 파이낸스에서 영문으로 반환한 이름을 로컬 사전에 정의된 친숙한 한글명으로 교체
+                for mapping in COMMON_KOREAN_STOCKS.values():
+                    if mapping["ticker"].upper() == ticker.upper():
+                        name = mapping["name"]
+                        break
+                
                 results.append({
                     "ticker": ticker,
                     "name": name,
