@@ -233,12 +233,15 @@
             <div id="watchlistCard" class="rounded-2xl p-5 glow-blue glass-dark transition-all duration-300 flex-grow flex flex-col">
                 <!-- Search & Header Row -->
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-emerald-500">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12M8.25 17.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
                         </svg>
                         <h2 class="text-lg font-semibold text-slate-800 dark:text-white">감시 종목 리스트</h2>
                         <span id="watchlistCount" class="text-xs px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-medium">총 0개 종목</span>
+                        <button type="button" id="bulkDeleteBtn" class="py-1 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium text-xs transition-all duration-200 flex items-center gap-1 shadow-md shadow-red-500/15 opacity-0 pointer-events-none" title="선택한 항목 일괄 삭제">
+                            선택 삭제 (0)
+                        </button>
                     </div>
                     <div class="flex items-center gap-2 w-full md:w-auto">
                         <input type="text" id="watchlistSearchInput" placeholder="리스트 내 종목명/티커 검색..." 
@@ -250,6 +253,9 @@
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="border-b border-slate-200 dark:border-slate-800/80 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                                <th class="py-3 px-4 w-10">
+                                    <input type="checkbox" id="selectAllCheckbox" class="rounded border-slate-350 dark:border-slate-850 text-brand-600 focus:ring-brand-500 bg-white dark:bg-slate-900 w-4 h-4 cursor-pointer">
+                                </th>
                                 <th class="py-3 px-4 cursor-pointer select-none hover:text-slate-800 dark:hover:text-white transition-colors" onclick="handleSort('name')">
                                     종목 정보 <span id="sort-name-icon" class="ml-1 text-slate-400 dark:text-slate-500 text-[10px]">↕</span>
                                 </th>
@@ -327,6 +333,8 @@
         const watchlistTableBody = document.getElementById('watchlistTableBody');
         const watchlistCount = document.getElementById('watchlistCount');
         const watchlistSearchInput = document.getElementById('watchlistSearchInput');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
 
         // Cards for theme styling
         const cards = [
@@ -525,6 +533,12 @@
         // --- Render UI Table ---
 
         async function renderWatchlist() {
+            selectAllCheckbox.checked = false;
+            if (bulkDeleteBtn) {
+                bulkDeleteBtn.classList.add('opacity-0', 'pointer-events-none');
+                bulkDeleteBtn.innerText = '선택 삭제 (0)';
+            }
+
             let filteredAlerts = [...alerts];
             
             // 1. Filter by search query
@@ -562,7 +576,7 @@
             if (filteredAlerts.length === 0) {
                 watchlistTableBody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="text-center py-10 text-slate-400 dark:text-slate-500">
+                        <td colspan="7" class="text-center py-10 text-slate-400 dark:text-slate-500">
                             ${listSearchQuery ? '검색 조건과 일치하는 종목이 없습니다.' : '등록된 감시 종목이 없습니다.'}
                         </td>
                     </tr>`;
@@ -589,6 +603,9 @@
 
                 rowsHtml += `
                     <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
+                        <td class="py-3.5 px-4 w-10">
+                            <input type="checkbox" class="row-checkbox rounded border-slate-300 dark:border-slate-800 text-brand-600 focus:ring-brand-500 bg-white dark:bg-slate-900 w-4 h-4 cursor-pointer" value="${item.id}" onclick="handleRowCheckboxChange(event)">
+                        </td>
                         <td class="py-3.5 px-4">
                             <div class="flex items-center gap-1.5 group">
                                 <div class="font-medium text-slate-800 dark:text-white">${item.name}</div>
@@ -948,6 +965,71 @@
                 alert("삭제에 실패했습니다.");
             }
         }
+
+        function updateBulkDeleteButtonState() {
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            const count = checkedBoxes.length;
+            
+            if (count > 0) {
+                bulkDeleteBtn.classList.remove('opacity-0', 'pointer-events-none');
+                bulkDeleteBtn.innerText = `선택 삭제 (${count})`;
+            } else {
+                bulkDeleteBtn.classList.add('opacity-0', 'pointer-events-none');
+                bulkDeleteBtn.innerText = '선택 삭제 (0)';
+            }
+            
+            if (rowCheckboxes.length > 0 && rowCheckboxes.length === count) {
+                selectAllCheckbox.checked = true;
+            } else {
+                selectAllCheckbox.checked = false;
+            }
+        }
+
+        window.handleRowCheckboxChange = function(event) {
+            event.stopPropagation();
+            updateBulkDeleteButtonState();
+        };
+
+        async function handleBulkDelete() {
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            const ids = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+            
+            if (ids.length === 0) return;
+            
+            if (!confirm(`정말 선택한 ${ids.length}개의 알림 감시를 일괄 삭제하시겠습니까?`)) {
+                return;
+            }
+            
+            try {
+                const r = await fetch('/api/alerts/bulk-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: ids })
+                });
+                const res = await r.json();
+                if (r.ok) {
+                    alert(res.message);
+                    selectAllCheckbox.checked = false;
+                    fetchWatchlist();
+                } else {
+                    alert("일괄 삭제 실패: " + res.detail);
+                }
+            } catch (e) {
+                alert("네트워크 오류로 삭제에 실패했습니다.");
+            }
+        }
+
+        selectAllCheckbox.addEventListener('change', function() {
+            const isChecked = selectAllCheckbox.checked;
+            const rowCheckboxes = document.querySelectorAll('.row-checkbox');
+            rowCheckboxes.forEach(cb => {
+                cb.checked = isChecked;
+            });
+            updateBulkDeleteButtonState();
+        });
+
+        bulkDeleteBtn.addEventListener('click', handleBulkDelete);
 
         cancelEditBtn.addEventListener('click', resetAlertForm);
         alertForm.addEventListener('submit', handleFormSubmit);

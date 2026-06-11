@@ -77,61 +77,117 @@ async def price_monitor_loop():
             
             today_str = datetime.date.today().isoformat()
             
-            # Cache to store fetched prices for this cycle to avoid duplicate API requests
+            # 3. Handle Date Change Reset
+            # If last_alert_date is from a previous day, reset triggered_state to 0
+            for alert in active_alerts:
+                if alert["last_alert_date"] != today_str and alert["triggered_state"] != 0:
+                    database.update_alert_trigger_state(alert["id"], 0)
+                    alert["triggered_state"] = 0  # Sync local list object
+            
+            # 4. Fetch unique prices to avoid duplicate API calls
             price_cache = {}
+            unique_tickers = list(set(a["ticker"] for a in active_alerts))
+            for ticker in unique_tickers:
+                price = stock_api.fetch_stock_price(ticker)
+                price_cache[ticker] = price
+                await asyncio.sleep(0.3)  # Throttling
+                
+            # 5. Evaluate raw condition trigger for each alert
+            triggered_alerts = []
+            non_triggered_alerts = []
             
             for alert in active_alerts:
                 ticker = alert["ticker"]
-                target = alert["target_price"]
-                condition = alert["condition"]
-                last_date = alert["last_alert_date"]
-                alert_id = alert["id"]
-                name = alert["name"]
-                
-                # Skip if already alerted today
-                if last_date == today_str:
-                    continue
-                
-                # Fetch price (Use cache if already fetched in this cycle)
-                if ticker in price_cache:
-                    price = price_cache[ticker]
-                else:
-                    price = stock_api.fetch_stock_price(ticker)
-                    price_cache[ticker] = price
-                    # Throttling delay to avoid hitting rate limits (only on actual API hit)
-                    await asyncio.sleep(0.3)
+                price = price_cache.get(ticker)
                 
                 if price is None:
-                    print(f"[{ticker}] Failed to fetch price. Skipping.")
                     continue
                 
-                # Check condition
-                triggered = False
-                if condition == "<=" and price <= target:
-                    triggered = True
-                elif condition == ">=" and price >= target:
-                    triggered = True
-                elif condition == "<" and price < target:
-                    triggered = True
-                elif condition == ">" and price > target:
-                    triggered = True
+                # Raw evaluation
+                is_triggered = False
+                cond = alert["condition"]
+                target = alert["target_price"]
                 
-                if triggered:
+                if cond == "<=" and price <= target:
+                    is_triggered = True
+                elif cond == ">=" and price >= target:
+                    is_triggered = True
+                elif cond == "<" and price < target:
+                    is_triggered = True
+                elif cond == ">" and price > target:
+                    is_triggered = True
+                    
+                alert["current_price"] = price  # Store price in alert object
+                
+                if is_triggered:
+                    triggered_alerts.append(alert)
+                else:
+                    non_triggered_alerts.append(alert)
+            
+            # 6. Apply Priority (Dominance) Filtering on triggered alerts per ticker
+            # For each ticker, if multiple alerts trigger:
+            # - Group by condition type
+            # - For '<=' (or '<') condition: pick the one with the MINIMUM target price
+            # - For '>=' (or '>') condition: pick the one with the MAXIMUM target price
+            final_alerts_to_send = []
+            
+            # Group by ticker
+            ticker_groups = {}
+            for alert in triggered_alerts:
+                ticker = alert["ticker"]
+                ticker_groups.setdefault(ticker, []).append(alert)
+                
+            for ticker, group in ticker_groups.items():
+                # Separate into above (>=, >) and below (<=, <)
+                below_group = [a for a in group if "<" in a["condition"]]
+                above_group = [a for a in group if ">" in a["condition"]]
+                
+                if below_group:
+                    # Minimum target price wins
+                    min_alert = min(below_group, key=lambda x: x["target_price"])
+                    final_alerts_to_send.append(min_alert)
+                    
+                if above_group:
+                    # Maximum target price wins
+                    max_alert = max(above_group, key=lambda x: x["target_price"])
+                    final_alerts_to_send.append(max_alert)
+            
+            # 7. Action: Send messages and update triggered_state
+            # Send alert only if triggered_state is 0
+            for alert in final_alerts_to_send:
+                alert_id = alert["id"]
+                ticker = alert["ticker"]
+                name = alert["name"]
+                price = alert["current_price"]
+                cond = alert["condition"]
+                target = alert["target_price"]
+                
+                if alert["triggered_state"] == 0:
+                    # Transition 0 -> 1: Send Telegram!
                     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    msg = f"🔔 *[주식 목표가 도달 알림]*\n\n*종목명:* {name}\n*티커:* `{ticker}`\n*현재가:* {price:,.2f}원\n*조건:* {condition} {target:,.2f}원\n*일시:* {timestamp}"
-                    print(f"[{timestamp}] ALERT TRIGGERED: {name} ({ticker}) price {price} meets {condition} {target}")
+                    msg = f"🔔 *[주식 목표가 도달 알림]*\n\n*종목명:* {name}\n*티커:* `{ticker}`\n*현재가:* {price:,.2f}원\n*조건:* {cond} {target:,.2f}원\n*일시:* {timestamp}"
+                    print(f"[{timestamp}] ALERT TRIGGERED: {name} ({ticker}) price {price} meets {cond} {target}")
                     
                     if token and chat_id:
                         success, resp = send_telegram(token, chat_id, msg)
                         if success:
-                            database.update_last_alert_date(alert_id, today_str)
+                            database.update_alert_trigger_state(alert_id, 1, today_str)
                             print(f"[{ticker}] Telegram alert sent successfully.")
                         else:
                             print(f"[{ticker}] Failed to send Telegram: {resp}")
                     else:
-                        # For testing mode without API keys, we still trigger the UI state change
-                        database.update_last_alert_date(alert_id, today_str)
+                        database.update_alert_trigger_state(alert_id, 1, today_str)
                         print(f"[{ticker}] (Mock Mode) Alert marked as triggered in UI.")
+            
+            # 8. Reset state (1 -> 0) for non-triggered alerts
+            # If an alert is NOT triggered, but its current triggered_state is 1,
+            # it means the stock price has escaped the trigger boundary. We reset it to 0.
+            for alert in non_triggered_alerts:
+                if alert["triggered_state"] == 1:
+                    alert_id = alert["id"]
+                    ticker = alert["ticker"]
+                    print(f"[{ticker}] Price escaped boundary. Resetting triggered_state from 1 to 0.")
+                    database.update_alert_trigger_state(alert_id, 0)
                 
         except Exception as e:
             print(f"Error in price_monitor_loop: {e}")
@@ -291,6 +347,17 @@ def api_delete_alert(alert_id: int):
     database.delete_alert(alert_id)
     return {"status": "success", "message": "Alert deleted successfully."}
 
+class BulkDeleteRequest(BaseModel):
+    ids: list[int]
+
+@app.post("/api/alerts/bulk-delete")
+def api_delete_alerts_bulk(data: BulkDeleteRequest):
+    try:
+        database.delete_alerts_bulk(data.ids)
+        return {"status": "success", "message": f"Successfully deleted {len(data.ids)} alerts."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to bulk delete alerts: {str(e)}")
+
 @app.post("/api/check")
 async def api_trigger_check(background_tasks: BackgroundTasks):
     """Allows manual trigger of price check via UI button"""
@@ -303,39 +370,73 @@ async def api_trigger_check(background_tasks: BackgroundTasks):
         active_alerts = [a for a in alerts if a["enabled"] == 1]
         today_str = datetime.date.today().isoformat()
         
-        # Cache to store fetched prices for this manual check cycle
+        # Cache to store fetched prices
         price_cache = {}
+        unique_tickers = list(set(a["ticker"] for a in active_alerts))
+        for ticker in unique_tickers:
+            price = stock_api.fetch_stock_price(ticker)
+            price_cache[ticker] = price
+            await asyncio.sleep(0.3)
+            
+        triggered_alerts = []
+        non_triggered_alerts = []
         
         for alert in active_alerts:
-            # Recheck trigger condition (forces check regardless of last_alert_date for manual trigger)
             ticker = alert["ticker"]
+            price = price_cache.get(ticker)
+            if price is None:
+                continue
+                
+            is_triggered = False
+            cond = alert["condition"]
+            target = alert["target_price"]
             
-            # Fetch price (Use cache if already fetched in this cycle)
-            if ticker in price_cache:
-                price = price_cache[ticker]
+            if cond == "<=" and price <= target:
+                is_triggered = True
+            elif cond == ">=" and price >= target:
+                is_triggered = True
+            elif cond == "<" and price < target:
+                is_triggered = True
+            elif cond == ">" and price > target:
+                is_triggered = True
+                
+            alert["current_price"] = price
+            if is_triggered:
+                triggered_alerts.append(alert)
             else:
-                price = stock_api.fetch_stock_price(ticker)
-                price_cache[ticker] = price
-                await asyncio.sleep(0.3)
+                non_triggered_alerts.append(alert)
                 
-            if price is not None:
-                triggered = False
-                if alert["condition"] == "<=" and price <= alert["target_price"]:
-                    triggered = True
-                elif alert["condition"] == ">=" and price >= alert["target_price"]:
-                    triggered = True
-                elif alert["condition"] == "<" and price < alert["target_price"]:
-                    triggered = True
-                elif alert["condition"] == ">" and price > alert["target_price"]:
-                    triggered = True
+        # Priority Filter
+        final_alerts_to_send = []
+        ticker_groups = {}
+        for alert in triggered_alerts:
+            ticker_groups.setdefault(alert["ticker"], []).append(alert)
+            
+        for ticker, group in ticker_groups.items():
+            below_group = [a for a in group if "<" in a["condition"]]
+            above_group = [a for a in group if ">" in a["condition"]]
+            if below_group:
+                min_alert = min(below_group, key=lambda x: x["target_price"])
+                final_alerts_to_send.append(min_alert)
+            if above_group:
+                max_alert = max(above_group, key=lambda x: x["target_price"])
+                final_alerts_to_send.append(max_alert)
                 
-                if triggered:
-                    msg = f"🔔 *[수동 주가 진단 통과]*\n\n*종목명:* {alert['name']}\n*티커:* `{ticker}`\n*현재가:* {price:,.2f}원\n*조건:* {alert['condition']} {alert['target_price']:,.2f}원"
-                    if token and chat_id:
-                        send_telegram(token, chat_id, msg)
-                        database.update_last_alert_date(alert["id"], today_str)
-                    else:
-                        database.update_last_alert_date(alert["id"], today_str)
+        # Action
+        for alert in final_alerts_to_send:
+            alert_id = alert["id"]
+            if alert["triggered_state"] == 0:
+                msg = f"🔔 *[수동 주가 진단 통과]*\n\n*종목명:* {alert['name']}\n*티커:* `{alert['ticker']}`\n*현재가:* {alert['current_price']:,.2f}원\n*조건:* {alert['condition']} {alert['target_price']:,.2f}원"
+                if token and chat_id:
+                    send_telegram(token, chat_id, msg)
+                    database.update_alert_trigger_state(alert_id, 1, today_str)
+                else:
+                    database.update_alert_trigger_state(alert_id, 1, today_str)
+                    
+        # Reset State for escapes
+        for alert in non_triggered_alerts:
+            if alert["triggered_state"] == 1:
+                database.update_alert_trigger_state(alert["id"], 0)
             
     background_tasks.add_task(run_check_once)
     return {"status": "success", "message": "Manual check queued."}

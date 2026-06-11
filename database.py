@@ -58,14 +58,15 @@ def init_db():
                 condition TEXT,
                 target_price REAL,
                 enabled INTEGER DEFAULT 1,
-                last_alert_date TEXT
+                last_alert_date TEXT,
+                triggered_state INTEGER DEFAULT 0
             )
             """)
             
             # Restore data
             cursor.execute("""
-            INSERT INTO alerts (id, ticker, name, condition, target_price, enabled, last_alert_date)
-            SELECT id, ticker, name, condition, target_price, enabled, last_alert_date FROM alerts_old
+            INSERT INTO alerts (id, ticker, name, condition, target_price, enabled, last_alert_date, triggered_state)
+            SELECT id, ticker, name, condition, target_price, enabled, last_alert_date, 0 FROM alerts_old
             """)
             
             # Drop backup table
@@ -85,21 +86,35 @@ def init_db():
             condition TEXT, -- '<=', '>=', '<', '>'
             target_price REAL,
             enabled INTEGER DEFAULT 1, -- 0 = Disabled, 1 = Enabled
-            last_alert_date TEXT -- Format: YYYY-MM-DD
+            last_alert_date TEXT, -- Format: YYYY-MM-DD
+            triggered_state INTEGER DEFAULT 0
         )
         """)
+        
+        # Check if table exists but is missing 'triggered_state' column (for existing tables without UNIQUE)
+        if table_info:
+            cursor.execute("PRAGMA table_info(alerts)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "triggered_state" not in columns:
+                print("Migrating database: Adding triggered_state column...")
+                try:
+                    cursor.execute("ALTER TABLE alerts ADD COLUMN triggered_state INTEGER DEFAULT 0")
+                    conn.commit()
+                    print("Added triggered_state column successfully.")
+                except Exception as e:
+                    print(f"Error adding triggered_state column: {e}")
         
         # Insert some sample alerts for UI testing if table is empty
         cursor.execute("SELECT COUNT(*) FROM alerts")
         if cursor.fetchone()[0] == 0:
             sample_alerts = [
-                ("005930.KS", "삼성전자", "<=", 70000.0, 1, ""),
-                ("AAPL", "Apple Inc.", ">=", 180.0, 1, ""),
-                ("NVDA", "NVIDIA Corp.", ">=", 120.0, 0, "")
+                ("005930.KS", "삼성전자", "<=", 70000.0, 1, "", 0),
+                ("AAPL", "Apple Inc.", ">=", 180.0, 1, "", 0),
+                ("NVDA", "NVIDIA Corp.", ">=", 120.0, 0, "", 0)
             ]
             cursor.executemany("""
-            INSERT INTO alerts (ticker, name, condition, target_price, enabled, last_alert_date)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO alerts (ticker, name, condition, target_price, enabled, last_alert_date, triggered_state)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """, sample_alerts)
             conn.commit()
         
@@ -137,7 +152,7 @@ def update_settings(telegram_token, telegram_chat_id, check_interval):
 def list_alerts():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, ticker, name, condition, target_price, enabled, last_alert_date FROM alerts")
+    cursor.execute("SELECT id, ticker, name, condition, target_price, enabled, last_alert_date, triggered_state FROM alerts")
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
@@ -156,8 +171,8 @@ def create_alert(ticker, name, condition, target_price, enabled=1):
             return False, f"이미 동일한 조건의 알림이 등록되어 있습니다. ({ticker} - {condition} {target_price})"
             
         cursor.execute("""
-        INSERT INTO alerts (ticker, name, condition, target_price, enabled, last_alert_date)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO alerts (ticker, name, condition, target_price, enabled, last_alert_date, triggered_state)
+        VALUES (?, ?, ?, ?, ?, ?, 0, 0)
         """, (ticker.strip().upper(), name.strip(), condition.strip(), float(target_price), int(enabled), ""))
         conn.commit()
         success = True
@@ -184,7 +199,7 @@ def update_alert(alert_id, ticker, name, condition, target_price, enabled):
             
         cursor.execute("""
         UPDATE alerts 
-        SET ticker = ?, name = ?, condition = ?, target_price = ?, enabled = ?
+        SET ticker = ?, name = ?, condition = ?, target_price = ?, enabled = ?, triggered_state = 0
         WHERE id = ?
         """, (ticker.strip().upper(), name.strip(), condition.strip(), float(target_price), int(enabled), int(alert_id)))
         conn.commit()
@@ -204,9 +219,37 @@ def delete_alert(alert_id):
     conn.commit()
     conn.close()
 
+def delete_alerts_bulk(alert_ids):
+    if not alert_ids:
+        return
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    placeholders = ','.join('?' for _ in alert_ids)
+    cursor.execute(f"DELETE FROM alerts WHERE id IN ({placeholders})", [int(x) for x in alert_ids])
+    conn.commit()
+    conn.close()
+
 def update_last_alert_date(alert_id, date_str):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE alerts SET last_alert_date = ? WHERE id = ?", (date_str, int(alert_id)))
+    conn.commit()
+    conn.close()
+
+def update_alert_trigger_state(alert_id, state, date_str=None):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if date_str:
+        cursor.execute("""
+        UPDATE alerts 
+        SET triggered_state = ?, last_alert_date = ? 
+        WHERE id = ?
+        """, (int(state), date_str, int(alert_id)))
+    else:
+        cursor.execute("""
+        UPDATE alerts 
+        SET triggered_state = ? 
+        WHERE id = ?
+        """, (int(state), int(alert_id)))
     conn.commit()
     conn.close()
